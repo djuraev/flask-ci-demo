@@ -1,20 +1,17 @@
 name: CI Pipeline
 
-# ── When does this run? ──────────────────────────────────────────────────────
 on:
   push:
-    branches: [main]          # every push to main
+    branches: [main]
   pull_request:
-    branches: [main]          # every PR that targets main
+    branches: [main]
 
-# ── Shared variables ─────────────────────────────────────────────────────────
 env:
   IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/flask-demo
 
-# ── Jobs ─────────────────────────────────────────────────────────────────────
 jobs:
 
-  # ── Job 1: Install deps and run tests ──────────────────────────────────────
+  # ── Job 1: Install dependencies and run tests ─────────────────────────────
   test:
     name: Build & Test
     runs-on: ubuntu-latest
@@ -41,11 +38,11 @@ jobs:
         run: pytest test_app.py -v
 
 
-  # ── Job 2: Build Docker image and push to Docker Hub ───────────────────────
+  # ── Job 2: Build Docker image and push to Docker Hub ─────────────────────
   docker:
     name: Docker Build & Push
     runs-on: ubuntu-latest
-    needs: test                          # only runs if tests passed
+    needs: test
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
     steps:
@@ -74,6 +71,48 @@ jobs:
 
       - name: Print image info
         run: |
-          echo "Image pushed:"
-          echo "  ${{ env.IMAGE_NAME }}:latest"
-          echo "  ${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          echo "Pushed: ${{ env.IMAGE_NAME }}:latest"
+          echo "Pushed: ${{ env.IMAGE_NAME }}:${{ github.sha }}"
+
+
+  # ── Job 3: Pull image from Docker Hub and run it as a container ───────────
+  # All steps use shell: bash — available natively on macOS/Linux and via
+  # Git for Windows on Windows. No PowerShell execution policy issues.
+  deploy:
+    name: Deploy to Local PC
+    runs-on: self-hosted
+    needs: docker
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: local-dev
+
+    steps:
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Stop and remove existing container
+        shell: bash
+        run: docker rm -f flask-demo
+        continue-on-error: true
+
+      - name: Pull image from Docker Hub
+        shell: bash
+        run: docker pull ${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      - name: Run new container
+        shell: bash
+        run: |
+          docker run -d \
+            --name flask-demo \
+            --restart unless-stopped \
+            -p 8080:8080 \
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      - name: Health check
+        shell: bash
+        run: |
+          sleep 3
+          curl -f http://localhost:8080/health
+          echo "Deploy successful"
