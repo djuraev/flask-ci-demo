@@ -76,8 +76,10 @@ jobs:
 
 
   # ── Job 3: Pull image from Docker Hub and run it as a container ───────────
-  # All steps use shell: bash — available natively on macOS/Linux and via
-  # Git for Windows on Windows. No PowerShell execution policy issues.
+  # shell: cmd is used for all steps — cmd.exe is always available on Windows,
+  # has no execution policy, and Docker CLI works perfectly inside it.
+  # GitHub Actions ${{ }} expressions are resolved before the shell sees them,
+  # so no cmd-specific variable syntax is needed.
   deploy:
     name: Deploy to Local PC
     runs-on: self-hosted
@@ -93,26 +95,21 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Stop and remove existing container
-        shell: bash
+        shell: cmd
         run: docker rm -f flask-demo
         continue-on-error: true
 
       - name: Pull image from Docker Hub
-        shell: bash
+        shell: cmd
         run: docker pull ${{ env.IMAGE_NAME }}:${{ github.sha }}
 
       - name: Run new container
-        shell: bash
-        run: |
-          docker run -d \
-            --name flask-demo \
-            --restart unless-stopped \
-            -p 8080:8080 \
-            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+        shell: cmd
+        run: docker run -d --name flask-demo --restart unless-stopped -p 8080:8080 ${{ env.IMAGE_NAME }}:${{ github.sha }}
 
       - name: Health check
-        shell: bash
+        shell: cmd
         run: |
-          sleep 3
+          timeout /t 3 /nobreak > nul
           curl -f http://localhost:8080/health
-          echo "Deploy successful"
+          echo Deploy successful
