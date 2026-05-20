@@ -110,6 +110,6 @@ jobs:
       - name: Health check
         shell: cmd
         run: |
-          timeout /t 3 /nobreak > nul
+          ping 127.0.0.1 -n 4 > nul
           curl -f http://localhost:8080/health
           echo Deploy successful
